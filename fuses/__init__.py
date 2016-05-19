@@ -8,7 +8,7 @@ import functools
 import contextlib
 import random
 
-__all__ = ("breaker", "Fuses")
+__all__ = ("breaker", "Fuses", "FusesOpenError")
 
 
 def breaker(fuses):
@@ -16,11 +16,14 @@ def breaker(fuses):
     decorator for circuit breaker pattern
     :param fuses: an instance of Fuses
     """
+
     def _wrapper(func):
         @functools.wraps(func)
         def __wrapper(*args, **kwargs):
             return fuses.handle(*args, **kwargs)
+
         return __wrapper
+
     return _wrapper
 
 
@@ -43,7 +46,6 @@ def circuit(fuses):
 
 
 class Fuses(object):
-
     def __init__(self, fails, timeout, exception_list, backoff_cap=30, with_jitter=True):
         self._max_fails = fails
         self._timeout = timeout
@@ -134,7 +136,6 @@ class Fuses(object):
 
 
 class BreakerState(object):
-
     def __init__(self, fuses, name):
         self._fuses = fuses
         self._name = name
@@ -157,11 +158,8 @@ class BreakerState(object):
 
 
 class BreakerOpenState(BreakerState):
-
     def __init__(self, fuses, name='open'):
         super(BreakerOpenState, self).__init__(fuses, name)
-        self._fuses.reset_fail_counter()
-        self._fuses.last_time = time()
 
     def pre_handle(self):
         now = time()
@@ -173,6 +171,8 @@ class BreakerOpenState(BreakerState):
             reset_timeout = random.random() * reset_timeout
         if now > (self._fuses.last_time + reset_timeout):
             self._fuses.half_open()
+        else:
+            raise FusesOpenError("fuses opened!")
         return self.name
 
     def success(self):
@@ -183,9 +183,10 @@ class BreakerOpenState(BreakerState):
 
 
 class BreakerClosedState(BreakerState):
-
     def __init__(self, fuses, name='closed'):
         super(BreakerClosedState, self).__init__(fuses, name)
+        self._fuses.reset_fail_counter()
+        self._fuses.last_time = time()
 
     def pre_handle(self):
         return self.name
@@ -202,7 +203,6 @@ class BreakerClosedState(BreakerState):
 
 
 class BreakerHalfOpenState(BreakerState):
-
     def __init__(self, fuses, name='half_open'):
         super(BreakerHalfOpenState, self).__init__(fuses, name)
 
@@ -210,14 +210,21 @@ class BreakerHalfOpenState(BreakerState):
         return self.name
 
     def success(self):
-        self._fuses.reset_fail_counter()
         self._fuses.close()
 
     def error(self):
         self._fuses.open()
 
+
+class FusesOpenError(Exception):
+    pass
+
+
 if __name__ == "__main__":
     f = Fuses(5, 10, [RuntimeError])
-    with circuit(f) as f:
-        # remote call
-        raise RuntimeError
+    try:
+        with circuit(f) as f:
+            # remote call
+            raise RuntimeError
+    except FusesOpenError as exp:
+        print "fuses open"
