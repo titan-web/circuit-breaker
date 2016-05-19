@@ -135,8 +135,13 @@ class Fuses(object):
 
 class BreakerState(object):
 
-    def __init__(self, fuses):
+    def __init__(self, fuses, name):
         self._fuses = fuses
+        self._name = name
+
+    @property
+    def name(self):
+        return self._name
 
     def pre_handle(self):
         raise NotImplementedError("Must implement pre_handle!")
@@ -153,8 +158,10 @@ class BreakerState(object):
 
 class BreakerOpenState(BreakerState):
 
-    def __init__(self, fuses):
-        super(BreakerOpenState, self).__init__(fuses)
+    def __init__(self, fuses, name='open'):
+        super(BreakerOpenState, self).__init__(fuses, name)
+        self._fuses.reset_fail_counter()
+        self._fuses.last_time = time()
 
     def pre_handle(self):
         now = time()
@@ -166,7 +173,7 @@ class BreakerOpenState(BreakerState):
             reset_timeout = random.random() * reset_timeout
         if now > (self._fuses.last_time + reset_timeout):
             self._fuses.half_open()
-        return self._fuses
+        return self.name
 
     def success(self):
         pass
@@ -177,11 +184,11 @@ class BreakerOpenState(BreakerState):
 
 class BreakerClosedState(BreakerState):
 
-    def __init__(self, fuses):
-        super(BreakerClosedState, self).__init__(fuses)
+    def __init__(self, fuses, name='closed'):
+        super(BreakerClosedState, self).__init__(fuses, name)
 
     def pre_handle(self):
-        return self._fuses
+        return self.name
 
     def success(self):
         pass
@@ -196,11 +203,11 @@ class BreakerClosedState(BreakerState):
 
 class BreakerHalfOpenState(BreakerState):
 
-    def __init__(self, fuses):
-        super(BreakerHalfOpenState, self).__init__(fuses)
+    def __init__(self, fuses, name='half_open'):
+        super(BreakerHalfOpenState, self).__init__(fuses, name)
 
     def pre_handle(self):
-        return self._fuses
+        return self.name
 
     def success(self):
         self._fuses.reset_fail_counter()
@@ -210,6 +217,7 @@ class BreakerHalfOpenState(BreakerState):
         self._fuses.open()
 
 if __name__ == "__main__":
-    f = Fuses(5, 10, [ValueError])
+    f = Fuses(5, 10, [RuntimeError])
     with circuit(f) as f:
-        print 1
+        # remote call
+        raise RuntimeError
