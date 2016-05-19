@@ -60,6 +60,7 @@ class Fuses(object):
         self._lock = RLock()
 
         self._fail_counter = 0
+        self._try_counter = 0
 
     @property
     def last_time(self):
@@ -89,8 +90,15 @@ class Fuses(object):
     def fail_counter(self):
         return self._fail_counter
 
+    @property
+    def try_counter(self):
+        return self._try_counter
+
     def reset_fail_counter(self):
         self._fail_counter = 0
+
+    def reset_try_counter(self):
+        self._try_counter = 0
 
     def exception_list(self):
         return self._exception_list
@@ -110,8 +118,11 @@ class Fuses(object):
         with self._lock:
             self._cur_state = FusesHalfOpenState(self)
 
-    def incr_counter(self):
+    def incr_fail_counter(self):
         self._fail_counter += 1
+
+    def incr_try_counter(self):
+        self._try_counter += 1
 
     def is_melting_point(self):
         if self._fail_counter > self._max_fails:
@@ -162,14 +173,15 @@ class FusesState(object):
 class FusesOpenState(FusesState):
     def __init__(self, fuses, name='open'):
         super(FusesOpenState, self).__init__(fuses, name)
+        self._fuses.incr_try_counter()
 
     def pre_handle(self):
         now = time()
         reset_timeout = self._fuses.reset_timeout
         if self._fuses.back_off_cap:
-            reset_timeout = self._fuses.reset_timeout * (2 ** self._fuses.fail_counter)
+            reset_timeout = self._fuses.reset_timeout * (2 ** self._fuses.try_counter)
             reset_timeout = min(reset_timeout, self._fuses.back_off_cap)
-            reset_timeout = random.random() * reset_timeout
+            reset_timeout = random.uniform(0, reset_timeout)
         if now > (self._fuses.last_time + reset_timeout):
             self._fuses.half_open()
         else:
@@ -193,7 +205,7 @@ class FusesClosedState(FusesState):
         return self._name
 
     def success(self):
-        pass
+        self._fuses.reset_fail_counter()
 
     def error(self):
         """ `close` state handle error"""
@@ -201,7 +213,7 @@ class FusesClosedState(FusesState):
             self._fuses.open()
             raise FusesOpenError("fuses open!")
         else:
-            self._fuses.incr_counter()
+            self._fuses.incr_fail_counter()
 
 
 class FusesHalfOpenState(FusesState):
