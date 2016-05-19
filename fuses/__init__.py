@@ -8,7 +8,7 @@ import functools
 import contextlib
 import random
 
-__all__ = ("breaker", "Fuses", "FusesOpenError")
+__all__ = ("breaker", "circuit", "Fuses", "FusesOpenError")
 
 
 def breaker(fuses):
@@ -36,25 +36,27 @@ def circuit(fuses):
     try:
         yield fuses.pre_handle()
     except Exception as exp:
-        except_name = exp.__class__.__name__
+        except_name = exp.__class__
         if except_name in fuses.exception_list():
             fuses.on_error()
         else:
-            raise exp.__class__(exp)
+            raise except_name(exp)
     else:
         fuses.on_success()
 
 
+# TODO:
+# multi context
+# back_off_cap
 class Fuses(object):
-    def __init__(self, fails, timeout, exception_list, backoff_cap=30, with_jitter=True):
+    def __init__(self, fails, timeout, exception_list, back_off_cap=0):
         self._max_fails = fails
         self._timeout = timeout
         self._exception_list = exception_list
-        self._backoff_cap = backoff_cap
-        self._with_jitter = with_jitter
+        self._back_off_cap = back_off_cap
 
         self._last_time = time()
-        self._cur_state = BreakerClosedState(self)
+        self._cur_state = FusesClosedState(self)
         self._lock = RLock()
 
         self._fail_counter = 0
@@ -80,12 +82,8 @@ class Fuses(object):
         self._timeout = timeout
 
     @property
-    def backoff_cap(self):
-        return self._backoff_cap
-
-    @property
-    def with_jitter(self):
-        return self._with_jitter
+    def backed_off_cap(self):
+        return self._back_off_cap
 
     @property
     def fail_counter(self):
@@ -100,17 +98,17 @@ class Fuses(object):
     def open(self):
         """convert to `open` state """
         with self._lock:
-            self._cur_state = BreakerOpenState(self)
+            self._cur_state = FusesOpenState(self)
 
     def close(self):
         """ convert to `closed` state """
         with self._lock:
-            self._cur_state = BreakerClosedState(self)
+            self._cur_state = FusesClosedState(self)
 
     def half_open(self):
         """ convert to `half-open` state """
         with self._lock:
-            self._cur_state = BreakerHalfOpenState(self)
+            self._cur_state = FusesHalfOpenState(self)
 
     def incr_counter(self):
         self._fail_counter += 1
@@ -122,7 +120,7 @@ class Fuses(object):
 
     def pre_handle(self):
         with self._lock:
-            self._cur_state.pre_handle()
+            return self._cur_state.pre_handle()
 
     def handle(self):
         with self._lock:
@@ -139,7 +137,7 @@ class Fuses(object):
             self._cur_state.error()
 
 
-class BreakerState(object):
+class FusesState(object):
     def __init__(self, fuses, name):
         self._fuses = fuses
         self._name = name
@@ -161,22 +159,21 @@ class BreakerState(object):
         raise NotImplementedError("Must implement error!")
 
 
-class BreakerOpenState(BreakerState):
+class FusesOpenState(FusesState):
     def __init__(self, fuses, name='open'):
-        super(BreakerOpenState, self).__init__(fuses, name)
+        super(FusesOpenState, self).__init__(fuses, name)
 
     def pre_handle(self):
         now = time()
         reset_timeout = self._fuses.reset_timeout
-        if self._fuses.backoff_cap:
+        if self._fuses.back_off_cap:
             reset_timeout = self._fuses.reset_timeout * (2 ** self._fuses.fail_counter)
-            reset_timeout = min(reset_timeout, self._fuses.backoff_cap)
-        if self._fuses.with_jitter:
+            reset_timeout = min(reset_timeout, self._fuses.back_off_cap)
             reset_timeout = random.random() * reset_timeout
         if now > (self._fuses.last_time + reset_timeout):
             self._fuses.half_open()
         else:
-            raise FusesOpenError("fuses opened!")
+            raise FusesOpenError("fuses open!")
         return self._name
 
     def success(self):
@@ -186,9 +183,9 @@ class BreakerOpenState(BreakerState):
         pass
 
 
-class BreakerClosedState(BreakerState):
+class FusesClosedState(FusesState):
     def __init__(self, fuses, name='closed'):
-        super(BreakerClosedState, self).__init__(fuses, name)
+        super(FusesClosedState, self).__init__(fuses, name)
         self._fuses.reset_fail_counter()
         self._fuses.last_time = time()
 
@@ -202,13 +199,14 @@ class BreakerClosedState(BreakerState):
         """ `close` state handle error"""
         if self._fuses.is_melting_point():
             self._fuses.open()
+            raise FusesOpenError("fuses open!")
         else:
             self._fuses.incr_counter()
 
 
-class BreakerHalfOpenState(BreakerState):
+class FusesHalfOpenState(FusesState):
     def __init__(self, fuses, name='half_open'):
-        super(BreakerHalfOpenState, self).__init__(fuses, name)
+        super(FusesHalfOpenState, self).__init__(fuses, name)
 
     def pre_handle(self):
         return self._name
@@ -218,6 +216,7 @@ class BreakerHalfOpenState(BreakerState):
 
     def error(self):
         self._fuses.open()
+        raise FusesOpenError("fuses reopen!")
 
 
 class FusesOpenError(Exception):
@@ -228,8 +227,11 @@ if __name__ == "__main__":
     f = Fuses(0, 1, [RuntimeError])
     print f.cur_state
     try:
-        with circuit(f) as f:
-            # remote call
-            raise RuntimeError
+        with circuit(f) as a:
+            # remote call raise error
+            raise RuntimeError("self runtime error!")
+
     except FusesOpenError as exp:
-        print "fuses open"
+        print exp
+
+    print f.cur_state
