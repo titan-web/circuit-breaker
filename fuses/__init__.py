@@ -2,7 +2,7 @@
 Circuit breaker pattern implementation
 """
 
-from time import time
+from time import time, sleep
 from threading import RLock
 import functools
 import contextlib
@@ -66,6 +66,10 @@ class Fuses(object):
     @last_time.setter
     def last_time(self, time_):
         self._last_time = time_
+
+    @property
+    def cur_state(self):
+        return self._cur_state.name
 
     @property
     def reset_timeout(self):
@@ -173,7 +177,7 @@ class BreakerOpenState(BreakerState):
             self._fuses.half_open()
         else:
             raise FusesOpenError("fuses opened!")
-        return self.name
+        return self._name
 
     def success(self):
         pass
@@ -189,7 +193,7 @@ class BreakerClosedState(BreakerState):
         self._fuses.last_time = time()
 
     def pre_handle(self):
-        return self.name
+        return self._name
 
     def success(self):
         pass
@@ -207,7 +211,7 @@ class BreakerHalfOpenState(BreakerState):
         super(BreakerHalfOpenState, self).__init__(fuses, name)
 
     def pre_handle(self):
-        return self.name
+        return self._name
 
     def success(self):
         self._fuses.close()
@@ -221,7 +225,8 @@ class FusesOpenError(Exception):
 
 
 if __name__ == "__main__":
-    f = Fuses(5, 10, [RuntimeError])
+    f = Fuses(0, 1, [RuntimeError])
+    print f.cur_state
     try:
         with circuit(f) as f:
             # remote call
