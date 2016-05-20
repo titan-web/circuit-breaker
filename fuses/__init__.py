@@ -2,13 +2,13 @@
 Circuit breaker pattern implementation
 """
 
-from time import time, sleep
+from time import time
 from threading import RLock
 import functools
 import contextlib
 import random
 
-__all__ = ("breaker", "circuit", "Fuses", "FusesOpenError")
+__all__ = ("breaker", "circuit", "Fuses", "FusesOpenError", "FusesManager")
 
 
 def breaker(fuses):
@@ -45,9 +45,16 @@ def circuit(fuses):
         fuses.on_success()
 
 
-# TODO:
-# multi context
-# back_off_cap
+class FusesManager(object):
+    def __init__(self):
+        self.circuits = {}
+
+    def get_fuses(self, name, max_fails, timeout, exception_list, back_off_cap=0):
+        if name not in self.circuits:
+            self.circuits[name] = Fuses(max_fails, timeout, exception_list, back_off_cap)
+        return self.circuits[name]
+
+
 class Fuses(object):
     def __init__(self, fails, timeout, exception_list, back_off_cap=0):
         self._max_fails = fails
@@ -237,7 +244,8 @@ class FusesOpenError(Exception):
 
 
 if __name__ == "__main__":
-    f = Fuses(0, 1, [RuntimeError])
+    fuses_manage = FusesManager()
+    f = fuses_manage.get_fuses('push', 0, 1, [RuntimeError])
     print f.cur_state
     try:
         with circuit(f) as a:
