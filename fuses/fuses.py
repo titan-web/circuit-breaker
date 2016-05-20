@@ -52,7 +52,7 @@ class Fuses(object):
         self._timeout = timeout
 
     @property
-    def backed_off_cap(self):
+    def back_off_cap(self):
         return self._back_off_cap
 
     @property
