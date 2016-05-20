@@ -3,11 +3,11 @@ Circuit breaker pattern implementation
 
 Example:
     >>> fuses_manage = FusesManager()
-    >>> f = fuses_manage.get_fuses('push', 0, 1, [RuntimeError])
+    >>> f = fuses_manage.get_fuses('push', 5, 10, ["ReadTimeout"])
     >>> try:
     >>>     with circuit(f) as a:
     >>>         # remote call raise error
-    >>>         raise RuntimeError("self runtime error!")
+    >>>         raise ReadTimeout("self read timeout!")
     >>>
     >>> except FusesOpenError as exp:
     >>>     print exp
@@ -48,10 +48,10 @@ def circuit(fuses):
     try:
         yield fuses.pre_handle()
     except Exception as exp:
-        except_name = exp.__class__
-        if except_name in fuses.exception_list():
+        except_class = exp.__class__
+        if except_class.__name__ in fuses.exception_list():
             fuses.on_error()
         else:
-            raise except_name(exp)
+            raise except_class(exp)
     else:
         fuses.on_success()
