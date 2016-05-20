@@ -174,6 +174,7 @@ class FusesOpenState(FusesState):
     def __init__(self, fuses, name='open'):
         super(FusesOpenState, self).__init__(fuses, name)
         self._fuses.incr_try_counter()
+        self._fuses.last_time = time()
 
     def pre_handle(self):
         now = time()
@@ -199,7 +200,7 @@ class FusesClosedState(FusesState):
     def __init__(self, fuses, name='closed'):
         super(FusesClosedState, self).__init__(fuses, name)
         self._fuses.reset_fail_counter()
-        self._fuses.last_time = time()
+        self._fuses.reset_try_counter()
 
     def pre_handle(self):
         return self._name
