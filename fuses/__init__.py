@@ -6,8 +6,8 @@ Example:
     >>> f = fuses_manage.get_fuses('push', 0, 1, [RuntimeError])
     >>> try:
     >>>     with circuit(f) as a:
-    >>>     # remote call raise error
-    >>>     raise RuntimeError("self runtime error!")
+    >>>         # remote call raise error
+    >>>         raise RuntimeError("self runtime error!")
     >>>
     >>> except FusesOpenError as exp:
     >>>     print exp
