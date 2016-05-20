@@ -1,6 +1,11 @@
 # circuit-breaker-pattern
 熔断器模式的Python实现
 
+
+![熔断模式](./state.png)
+![熔断模式](./sketch.png)
+
+
 *Example*:
 
 ```
@@ -16,4 +21,7 @@ except FusesOpenError as exp:
     print exp
 ```
 
-![熔断模式](./circuit_breaker_pattern.jpg)
+
+More:
+* http://martinfowler.com/bliki/CircuitBreaker.html
+* https://www.awsarchitectureblog.com/2015/03/backoff.html
