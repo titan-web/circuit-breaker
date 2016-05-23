@@ -94,7 +94,7 @@ class Fuses(object):
         self._try_counter += 1
 
     def is_melting_point(self):
-        if self._fail_counter > self._max_fails:
+        if self._fail_counter >= self._max_fails:
             return True
         return False
 

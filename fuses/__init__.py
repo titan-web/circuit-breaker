@@ -52,6 +52,6 @@ def circuit(fuses):
         if except_class.__name__ in fuses.exception_list():
             fuses.on_error()
         else:
-            raise except_class(exp)
+            raise exp
     else:
         fuses.on_success()
