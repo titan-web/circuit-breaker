@@ -2,12 +2,11 @@
 Circuit breaker pattern implementation
 
 Example:
-    >>> fuses_manage = FusesManager()
     >>> f = fuses_manage.get_fuses('push', 5, 10, ["ReadTimeout"])
     >>> try:
     >>>     with circuit(f) as a:
     >>>         # remote call raise error
-    >>>         raise ReadTimeout("self read timeout!")
+    >>>         raise ValueError("self read timeout!")
     >>>
     >>> except FusesOpenError as exp:
     >>>     print exp
@@ -55,3 +54,6 @@ def circuit(fuses):
             raise exp
     else:
         fuses.on_success()
+
+# single instance
+fuses_manage = FusesManager()
