@@ -16,31 +16,13 @@ Example:
 
 """
 
-import functools
 import contextlib
 from urlparse import urlparse
 from fuses_manager_conf import FusesManagerConfig
 from .fuses import FusesManager, FusesOpenError, Fuses, FusesClosedError
 
-__all__ = ("circuit", "FusesOpenError", "FusesClosedError", "fuses_manage")
-__version__ = "1.0.0"
-
-
-def breaker(fuses_manager):
-    """
-    decorator for circuit breaker pattern
-    :param fuses_manager: an instance of FusesManager
-    """
-
-    def _wrapper(func):
-        @functools.wraps(func)
-        def __wrapper(*args, **kwargs):
-            fuse = get_fuse_instance(fuses_manager, "default")
-            return fuse.decorators(func, *args, **kwargs)
-
-        return __wrapper
-
-    return _wrapper
+__all__ = ("circuit", "FusesOpenError", "FusesClosedError", "fuses_manage", "ExponentialBackOff")
+__version__ = "2.0.0"
 
 
 @contextlib.contextmanager

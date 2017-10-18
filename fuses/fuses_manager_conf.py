@@ -13,7 +13,7 @@ class FusesManagerConfig(object):
             "timeout": 10,
             "exception_list": [],
             "all_exception": 1,
-            "back_off_cap": 15
+            "back_off_cap": 60
         }
 
     ]
