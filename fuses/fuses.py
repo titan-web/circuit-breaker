@@ -183,6 +183,7 @@ class FusesClosedState(FusesState):
         super(FusesClosedState, self).__init__(fuses, name)
         self._fuses.reset_fail_counter()
         self._fuses.reset_try_counter()
+        self._fuses.backoff.reset()
 
     def pre_handle(self):
         if self._fuses.is_open():
