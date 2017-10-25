@@ -1,9 +1,8 @@
 # coding=utf-8
 """
-熔断机制
+Circuit breaker pattern implementation
 """
-
-from time import time
+from time import time, localtime, strftime
 import os
 
 from .backoff import ExponentialBackOff
@@ -68,6 +67,10 @@ class Fuses(object):
         return self._request_queue
 
     @property
+    def threshold(self):
+        return self._threshold
+
+    @property
     def fail_counter(self):
         return self._fail_counter
 
@@ -112,6 +115,9 @@ class Fuses(object):
 
     def increase_try_counter(self):
         self._try_counter += 1
+
+    def is_open(self):
+        return self._policy.is_open(self._fail_counter, self._request_queue)
 
     def is_melting_point(self):
         return self._policy.is_melting_point(self._fail_counter, self._request_queue)
@@ -160,8 +166,8 @@ class FusesOpenState(FusesState):
             self._fuses.half_open()
         else:
             raise FusesOpenError(self._fuses.name, self._fuses.cur_state, self._fuses.fail_counter,
-                                 self._fuses.try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue)
-        return self._name
+                                 self._fuses.try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue,
+                                 self._fuses.threshold)
 
     def success(self):
         pass
@@ -179,7 +185,11 @@ class FusesClosedState(FusesState):
         self._fuses.reset_try_counter()
 
     def pre_handle(self):
-        return self._name
+        if self._fuses.is_open():
+            self._fuses.open()
+            raise FusesOpenError(self._fuses.name, self._fuses.cur_state, self._fuses.fail_counter,
+                                 self._fuses.try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue,
+                                 self._fuses.threshold)
 
     def success(self):
         self._fuses.reset_fail_counter()
@@ -187,10 +197,6 @@ class FusesClosedState(FusesState):
 
     def error(self):
         self._fuses.increase_fail_counter()
-        if self._fuses.is_melting_point():
-            self._fuses.open()
-            raise FusesOpenError(self._fuses.name, self._fuses.cur_state, self._fuses.fail_counter,
-                                 self._fuses.try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue)
 
 
 class FusesHalfOpenState(FusesState):
@@ -203,22 +209,31 @@ class FusesHalfOpenState(FusesState):
         return self._name
 
     def success(self):
+        """熔断半闭合状态重试成功
+        """
         try_counter = self._fuses.try_counter
-        self._fuses.close()
+        self._fuses.reset_fail_counter()
         self._fuses.append_success_request()
+        if self._fuses.is_melting_point():
+            raise FusesHalfOpenError(self._fuses.name, self._fuses.cur_state, self._fuses.fail_counter,
+                                     try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue,
+                                     self._fuses.threshold)
+        self._fuses.close()
         raise FusesClosedError(self._fuses.name, self._fuses.cur_state, self._fuses.fail_counter,
-                               try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue)
+                               try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue,
+                               self._fuses.threshold)
 
     def error(self):
         self._fuses.increase_try_counter()
         self._fuses.increase_fail_counter()
         self._fuses.open()
         raise FusesOpenError(self._fuses.name, self._fuses.cur_state, self._fuses.fail_counter,
-                             self._fuses.try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue)
+                             self._fuses.try_counter, os.getpid(), self._fuses.last_time, self._fuses.request_queue,
+                             self._fuses.threshold)
 
 
 class FusesError(Exception):
-    def __init__(self, name, state_name, fail_counter, try_counter, pid, last_time, requests):
+    def __init__(self, name, state_name, fail_counter, try_counter, pid, last_time, requests, threshold):
         self._name = name
         self._state_name = state_name
         self._fail_counter = fail_counter
@@ -226,13 +241,16 @@ class FusesError(Exception):
         self._pid = pid
         self._last_time = last_time
         self._requests = requests
+        self._threshold = threshold
 
     @property
     def message(self):
+        time_local = localtime(self._last_time)
+        last_time = strftime("%Y-%m-%d %H:%M:%S", time_local)
         msg_str = "Fuses name:[%s] Pid:[%s] State_name:[%s] Fail_counter:[%s] Try_counter:[%s] Last_time:[%s] " \
-                  "Requests:[%s]" % \
+                  "Requests:[%s] Threshold:[%s]" % \
                   (self._name, self._pid, self._state_name, self._fail_counter, self._try_counter,
-                   self._last_time, self._requests)
+                   last_time, self._requests, self._threshold)
         return repr(msg_str)
 
     @property
@@ -254,13 +272,15 @@ class FusesError(Exception):
 
 class FusesOpenError(FusesError):
     def is_first(self):
-        if self.try_counter > 1:
-            return False
-        else:
+        if self.try_counter == 0 and self.fail_counter > 0:
             return True
 
 
 class FusesClosedError(FusesError):
+    pass
+
+
+class FusesHalfOpenError(FusesError):
     pass
 
 
@@ -271,7 +291,12 @@ class FusesPolicyBase(object):
     def __init__(self, threshold):
         self.threshold = threshold
 
+    def is_open(self, fail_counter, request):
+        """是否开启熔断"""
+        raise NotImplementedError("Must implement error!")
+
     def is_melting_point(self, fail_counter, requests):
+        """是否到熔断的临界点"""
         raise NotImplementedError("Must implement error!")
 
 
@@ -284,6 +309,9 @@ class FusesCountPolicy(FusesPolicyBase):
             return True
         return False
 
+    def is_open(self, fail_counter, requests):
+        return self.is_melting_point(fail_counter, requests)
+
 
 class FusesPercentPolicy(FusesPolicyBase):
     def __init__(self, threshold):
@@ -292,6 +320,11 @@ class FusesPercentPolicy(FusesPolicyBase):
     def is_melting_point(self, fail_counter, requests):
         if not requests:
             return False
-        if requests[-1] == 0 and (sum(requests) <= len(requests) - self.threshold):
+        if sum(requests) <= len(requests) - self.threshold:
+            return True
+        return False
+
+    def is_open(self, fail_counter, requests):
+        if requests[-1] == 0 and self.is_melting_point(fail_counter, requests):
             return True
         return False
