@@ -4,7 +4,7 @@ Circuit breaker pattern implementation
 
 Example:
     >>> fuses_manage = FusesManager()
-    >>> url = "http://google.com"
+    >>> url = "http://www.example.com"
     >>> try:
     >>>     with circuit(fuses_manage, url) as a:
     >>>         # remote call raise error
@@ -19,7 +19,8 @@ Example:
 import contextlib
 
 from django.conf import settings
-from django.utils.importlib import import_module
+
+from .utils import import_module
 from .fuses import FusesManager, FusesOpenError, Fuses, FusesClosedError, FusesHalfOpenError
 
 __all__ = ("circuit", "FusesOpenError", "FusesClosedError", "FusesHalfOpenError", "fuses_manage", "ExponentialBackOff")

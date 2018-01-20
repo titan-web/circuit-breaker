@@ -23,16 +23,6 @@ class FusesManager(object):
 
 class Fuses(object):
     def __init__(self, name, threshold, timeout, exception_list, all_exception, back_off_cap=0, policy=1):
-        """
-
-        :param name: 熔断器名称
-        :param threshold: 触发熔断阈值
-        :param timeout: 二次试探等待时间
-        :param exception_list: 触发熔断的异常列表
-        :param all_exception: 是否接受所有异常
-        :param back_off_cap: 退避算法时间上限
-        :param policy: 熔断策略 0=计数法 1=滑动窗口
-        """
         self._name = name
         self._threshold = threshold
         self._exception_list = exception_list
@@ -183,7 +173,6 @@ class FusesClosedState(FusesState):
         super(FusesClosedState, self).__init__(fuses, name)
         self._fuses.reset_fail_counter()
         self._fuses.reset_try_counter()
-        self._fuses.backoff.reset()
 
     def pre_handle(self):
         if self._fuses.is_open():

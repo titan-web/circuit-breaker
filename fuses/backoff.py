@@ -1,7 +1,4 @@
 # coding=utf-8
-"""
-退避算法
-"""
 import random
 from time import time
 
@@ -16,7 +13,7 @@ class ExponentialBackOff(object):
 
         self.started = None
         self.multiplier = multiplier
-        self.max_interval = int(back_off_cap * 1000)
+        self.max_interval = int(back_off_cap * 1000) if back_off_cap else int(interval * 1000)
         self.factor = min(max(factor, 0), 1)
         self.interval = int(interval * 1000)
         self.current_interval = self.interval
